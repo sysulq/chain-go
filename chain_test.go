@@ -208,7 +208,7 @@ func TestRecover(t *testing.T) {
 func TestWrapError(t *testing.T) {
 	input := &TestInput{Value: 5}
 	output := &TestOutput{}
-	c := chain.New(input, output)
+	c := chain.New(input, output).Use(chain.DebugInterceptor)
 
 	c = c.Serial(testWrapError)
 
