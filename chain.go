@@ -90,14 +90,22 @@ func (c *Chain[I, O]) Use(interceptor Interceptor[I, O]) *Chain[I, O] {
 
 // Serial adds one or more operations to be executed sequentially
 func (c *Chain[I, O]) Serial(fns ...ChainFunc[I, O]) *Chain[I, O] {
-	c.fns = append(c.fns, fns...)
+	c.fns = append(c.fns, func(ctx context.Context, args *Args[I, O]) error {
+		for _, fn := range fns {
+			chainFunc := c.buildInterceptors(fn)
+			if c.err = chainFunc(ctx, c.chainArg); c.err != nil {
+				return wrapError(fn, c.err)
+			}
+		}
+		return nil
+	})
 	return c
 }
 
 // Parallel adds operations to be executed concurrently
 func (c *Chain[I, O]) Parallel(fns ...ChainFunc[I, O]) *Chain[I, O] {
 	c.fns = append(c.fns, func(ctx context.Context, args *Args[I, O]) error {
-		g, gctx := errgroup.WithContext(ctx)
+		g, ctx := errgroup.WithContext(ctx)
 
 		if c.maxGoroutines > 0 {
 			g.SetLimit(c.maxGoroutines)
@@ -105,28 +113,13 @@ func (c *Chain[I, O]) Parallel(fns ...ChainFunc[I, O]) *Chain[I, O] {
 		for _, fn := range fns {
 			fn := fn // https://golang.org/doc/faq#closures_and_goroutines
 			g.Go(func() error {
-				return c.executeSafely(gctx, fn)
+				chainFunc := c.buildInterceptors(fn)
+				return chainFunc(ctx, c.chainArg)
 			})
 		}
 		return g.Wait()
 	})
 	return c
-}
-
-// executeSafely runs a ChainFunc with panic recovery
-func (c *Chain[I, O]) executeSafely(ctx context.Context, fn ChainFunc[I, O]) (err error) {
-	isPanic := true
-	defer func() {
-		if isPanic {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("panic in execution: %v", r)
-			}
-		}
-	}()
-
-	err = fn(ctx, c.chainArg)
-	isPanic = false
-	return
 }
 
 // Execute runs all operations in the chain
@@ -138,32 +131,29 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 		defer cancel()
 	}
 
-	// Build the execution chain
-	var chainFunc ChainFunc[I, O] = func(ctx context.Context, args *Args[I, O]) error {
-		for _, fn := range c.fns {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
-			if err := fn(ctx, args); err != nil {
-				return err
-			}
+	for _, fn := range c.fns {
+		// Execute the chain
+		c.err = fn(ctx, c.chainArg)
+		if c.err != nil {
+			return c.chainArg.output, wrapError(fn, c.err)
 		}
-		return nil
-	}
-
-	// Apply interceptors in reverse order
-	for i := len(c.interceptors) - 1; i >= 0; i-- {
-		chainFunc = c.interceptors[i](chainFunc)
-	}
-
-	// Execute the chain
-	c.err = chainFunc(ctx, c.chainArg)
-	if c.err != nil {
-		return c.chainArg.output, wrapError(chainFunc, c.err)
 	}
 
 	return c.chainArg.output, nil
+}
+
+func (c *Chain[I, O]) buildInterceptors(fn ChainFunc[I, O]) ChainFunc[I, O] {
+	chainFunc := func(ctx context.Context, args *Args[I, O]) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		return fn(ctx, args)
+	}
+	for i := len(c.interceptors) - 1; i >= 0; i-- {
+		chainFunc = c.interceptors[i](chainFunc)
+	}
+	return chainFunc
 }
 
 // wrapError returns a new error with function name and original error

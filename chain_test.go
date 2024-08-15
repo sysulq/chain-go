@@ -194,9 +194,10 @@ func TestRecover(t *testing.T) {
 		t.Errorf("Expected 'panic in execution\n', got %v", err)
 	}
 
-	c = chain.New(input, output).Parallel(func(ctx context.Context, c *chain.Args[TestInput, TestOutput]) error {
-		panic("panic")
-	})
+	c = chain.New(input, output).Use(chain.RecoverInterceptor).
+		Parallel(func(ctx context.Context, c *chain.Args[TestInput, TestOutput]) error {
+			panic("panic")
+		})
 
 	_, err = c.Execute()
 	if err == nil || !strings.Contains(err.Error(), "panic in execution") {
