@@ -1,5 +1,7 @@
 # Chain: A Generic Operation Chain for Go
 
+[![Go](https://github.com/sysulq/chain-go/actions/workflows/go.yml/badge.svg)](https://github.com/sysulq/chain-go/actions/workflows/go.yml)
+
 ## Introduction
 
 Chain is a powerful and flexible Go package that provides a generic operation chain for executing a series of tasks in a structured and controlled manner. It supports both serial and parallel execution, error handling, interceptor, and context management, making it ideal for complex workflows and data processing pipelines.
@@ -59,7 +61,8 @@ func Example() {
 
 	// Create a new chain
 	c := chain.New(input, output).
-		WithTimeout(5 * time.Second)
+		WithTimeout(5 * time.Second).
+		Use(chain.RecoverInterceptor)
 
 	// Define chain operations
 	c.Serial(
@@ -69,8 +72,8 @@ func Example() {
 		},
 		calculateSum,
 	).Parallel(
-		calculateProduct,
 		simulateSlowOperation,
+		calculateProduct,
 	).Serial(
 		markProcessed,
 	)
@@ -87,8 +90,8 @@ func Example() {
 	// Output:
 	// Starting serial operations
 	// Calculating sum
-	// Simulating slow operation
 	// Calculating product
+	// Simulating slow operation
 	// Marking as processed
 	// Sum: 15, Product: 120, Processed: true
 }
@@ -116,9 +119,9 @@ func calculateProduct(ctx context.Context, c *chain.Args[Input, Output]) error {
 }
 
 func simulateSlowOperation(ctx context.Context, c *chain.Args[Input, Output]) error {
-	fmt.Println("Simulating slow operation")
 	select {
-	case <-time.After(2 * time.Second):
+	case <-time.After(100 * time.Millisecond):
+		fmt.Println("Simulating slow operation")
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
