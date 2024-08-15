@@ -93,8 +93,8 @@ func (c *Chain[I, O]) Serial(fns ...ChainFunc[I, O]) *Chain[I, O] {
 	c.fns = append(c.fns, func(ctx context.Context, args *Args[I, O]) error {
 		for _, fn := range fns {
 			chainFunc := c.buildInterceptors(fn)
-			if c.err = chainFunc(ctx, c.chainArg); c.err != nil {
-				return wrapError(fn, c.err)
+			if err := chainFunc(ctx, c.chainArg); err != nil {
+				return wrapError(fn, err)
 			}
 		}
 		return nil
@@ -114,8 +114,8 @@ func (c *Chain[I, O]) Parallel(fns ...ChainFunc[I, O]) *Chain[I, O] {
 			fn := fn // https://golang.org/doc/faq#closures_and_goroutines
 			g.Go(func() error {
 				chainFunc := c.buildInterceptors(fn)
-				if c.err = chainFunc(ctx, c.chainArg); c.err != nil {
-					return wrapError(fn, c.err)
+				if err := chainFunc(ctx, c.chainArg); err != nil {
+					return wrapError(fn, err)
 				}
 				return nil
 			})
