@@ -114,7 +114,10 @@ func (c *Chain[I, O]) Parallel(fns ...ChainFunc[I, O]) *Chain[I, O] {
 			fn := fn // https://golang.org/doc/faq#closures_and_goroutines
 			g.Go(func() error {
 				chainFunc := c.buildInterceptors(fn)
-				return wrapError(fn, chainFunc(ctx, c.chainArg))
+				if c.err = chainFunc(ctx, c.chainArg); c.err != nil {
+					return wrapError(fn, c.err)
+				}
+				return nil
 			})
 		}
 		return g.Wait()
@@ -159,10 +162,6 @@ func (c *Chain[I, O]) buildInterceptors(fn ChainFunc[I, O]) ChainFunc[I, O] {
 
 // wrapError returns a new error with function name and original error
 func wrapError(fn any, err error) error {
-	if err == nil {
-		return nil
-	}
-
 	name := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 	parts := strings.Split(name, ".")
 	name = parts[len(parts)-1]
