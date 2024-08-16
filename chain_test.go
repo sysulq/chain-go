@@ -39,7 +39,7 @@ func TestWithContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), contextKey("key"), "value")
 	_ = chain.New(input, output).
 		WithContext(ctx).
-		Serial(func(ctx context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+		Serial(func(ctx context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			if ctx.Value("key") != "value" {
 				t.Error("WithContext did not set the context correctly")
 			}
@@ -52,7 +52,7 @@ func TestSerial(t *testing.T) {
 	output := &TestOutput{}
 	c := chain.New(input, output)
 
-	c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 		chain.Output().Result = strconv.Itoa(chain.Input().Value * 2)
 		return nil
 	})
@@ -72,19 +72,19 @@ func TestParallel(t *testing.T) {
 	c := chain.New(input, output).WithMaxGoroutines(1)
 
 	c.Parallel(
-		func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			chain.WithLock(func() {
 				chain.Output().Result += "A"
 			})
 			return nil
 		},
-		func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			chain.WithLock(func() {
 				chain.Output().Result += "B"
 			})
 			return nil
 		},
-		func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			chain.WithLock(func() {
 				chain.Output().Result += "C"
 			})
@@ -111,7 +111,7 @@ func TestErrorHandling(t *testing.T) {
 
 	testError := errors.New("test error")
 
-	c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 		return testError
 	})
 
@@ -129,7 +129,7 @@ func TestContextCancellation(t *testing.T) {
 
 	cancel() // Cancel the context
 
-	c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 		t.Error("Function should not be called after context cancellation")
 		return nil
 	})
@@ -148,10 +148,10 @@ func TestParallelErrorHandling(t *testing.T) {
 	testError := errors.New("test error")
 
 	c.Parallel(
-		func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			return testError
 		},
-		func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			time.Sleep(100 * time.Millisecond) // Simulate some work
 			return nil
 		},
@@ -168,7 +168,7 @@ func TestTimeout(t *testing.T) {
 	output := &TestOutput{}
 	c := chain.New(input, output)
 
-	c.Serial(func(ctx context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(ctx context.Context, chain *chain.State[TestInput, TestOutput]) error {
 		time.Sleep(100 * time.Millisecond)
 		return ctx.Err()
 	})
@@ -186,7 +186,7 @@ func TestRecover(t *testing.T) {
 	output := &TestOutput{}
 	c := chain.New(input, output).Use(chain.RecoverInterceptor)
 
-	c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 		panic("panic")
 	})
 
@@ -196,7 +196,7 @@ func TestRecover(t *testing.T) {
 	}
 
 	chain.New(input, output).Use(chain.RecoverInterceptor).
-		Parallel(func(ctx context.Context, c *chain.Args[TestInput, TestOutput]) error {
+		Parallel(func(ctx context.Context, c *chain.State[TestInput, TestOutput]) error {
 			panic("panic")
 		})
 
@@ -221,7 +221,7 @@ func TestWrapError(t *testing.T) {
 
 var errTest = errors.New("test error")
 
-func testWrapError(ctx context.Context, c *chain.Args[TestInput, TestOutput]) error {
+func testWrapError(ctx context.Context, c *chain.State[TestInput, TestOutput]) error {
 	return errTest
 }
 
@@ -233,12 +233,12 @@ func TestContextInInterceptor(t *testing.T) {
 	c := chain.New(input, output).Use(chain.LogInterceptor)
 
 	c.Use(func(cf chain.HandleFunc[TestInput, TestOutput]) chain.HandleFunc[TestInput, TestOutput] {
-		return func(ctx context.Context, args *chain.Args[TestInput, TestOutput]) error {
+		return func(ctx context.Context, args *chain.State[TestInput, TestOutput]) error {
 			ctx = context.WithValue(ctx, contextKey("key"), "value")
 			return cf(ctx, args)
 		}
 	}).Serial(
-		func(ctx context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+		func(ctx context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			if ctx.Value(contextKey("key")) != "value" {
 				t.Error("WithContext did not set the context correctly")
 			}

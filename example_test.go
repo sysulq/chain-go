@@ -32,7 +32,7 @@ func Example() {
 
 	// Define chain operations
 	c.Serial(
-		func(ctx context.Context, c *chain.Args[Input, Output]) error {
+		func(ctx context.Context, c *chain.State[Input, Output]) error {
 			fmt.Println("Starting serial operations")
 			return nil
 		},
@@ -62,7 +62,7 @@ func Example() {
 	// Sum: 15, Product: 120, Processed: true
 }
 
-func calculateSum(ctx context.Context, c *chain.Args[Input, Output]) error {
+func calculateSum(ctx context.Context, c *chain.State[Input, Output]) error {
 	fmt.Println("Calculating sum")
 	sum := 0
 	for _, num := range c.Input().Numbers {
@@ -72,7 +72,7 @@ func calculateSum(ctx context.Context, c *chain.Args[Input, Output]) error {
 	return nil
 }
 
-func calculateProduct(ctx context.Context, c *chain.Args[Input, Output]) error {
+func calculateProduct(ctx context.Context, c *chain.State[Input, Output]) error {
 	fmt.Println("Calculating product")
 	product := 1
 	for _, num := range c.Input().Numbers {
@@ -84,7 +84,7 @@ func calculateProduct(ctx context.Context, c *chain.Args[Input, Output]) error {
 	return nil
 }
 
-func simulateSlowOperation(ctx context.Context, c *chain.Args[Input, Output]) error {
+func simulateSlowOperation(ctx context.Context, c *chain.State[Input, Output]) error {
 	select {
 	case <-time.After(100 * time.Millisecond):
 		fmt.Println("Simulating slow operation")
@@ -94,7 +94,7 @@ func simulateSlowOperation(ctx context.Context, c *chain.Args[Input, Output]) er
 	}
 }
 
-func markProcessed(ctx context.Context, c *chain.Args[Input, Output]) error {
+func markProcessed(ctx context.Context, c *chain.State[Input, Output]) error {
 	fmt.Println("Marking as processed")
 	c.Output().Processed = true
 	return nil
