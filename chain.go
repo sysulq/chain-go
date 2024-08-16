@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -20,8 +21,8 @@ type Interceptor[I, O any] func(HandleFunc[I, O]) HandleFunc[I, O]
 
 // Chain represents a generic operation chain, supporting input type I and output type O
 type Chain[I, O any] struct {
-	args          *Args[I, O]
 	ctx           context.Context
+	args          *Args[I, O]
 	fns           []HandleFunc[I, O]
 	interceptors  []Interceptor[I, O]
 	timeout       time.Duration
@@ -42,6 +43,7 @@ func New[I, O any](input *I, output *O) *Chain[I, O] {
 		args: &Args[I, O]{
 			input:  input,
 			output: output,
+			mu:     sync.Mutex{},
 		},
 	}
 }
@@ -87,13 +89,13 @@ func (c *Chain[I, O]) Use(interceptor Interceptor[I, O]) *Chain[I, O] {
 	return c
 }
 
-// Serial adds one or more operations to be executed sequentially
+// Serial adds operations to be executed sequentially
 func (c *Chain[I, O]) Serial(fns ...HandleFunc[I, O]) *Chain[I, O] {
 	c.fns = append(c.fns, func(ctx context.Context, args *Args[I, O]) error {
 		for _, fn := range fns {
 			handleFunc := c.buildInterceptors(fn)
 			if err := handleFunc(ctx, c.args); err != nil {
-				return wrapError(fn, err)
+				return err
 			}
 		}
 		return nil
@@ -113,10 +115,7 @@ func (c *Chain[I, O]) Parallel(fns ...HandleFunc[I, O]) *Chain[I, O] {
 			fn := fn // https://golang.org/doc/faq#closures_and_goroutines
 			g.Go(func() error {
 				handleFunc := c.buildInterceptors(fn)
-				if err := handleFunc(ctx, c.args); err != nil {
-					return wrapError(fn, err)
-				}
-				return nil
+				return handleFunc(ctx, c.args)
 			})
 		}
 		return g.Wait()
@@ -137,7 +136,7 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 		// Execute the chain
 		err := fn(ctx, c.args)
 		if err != nil {
-			return c.args.output, err
+			return c.args.output, errors.Unwrap(err)
 		}
 	}
 
@@ -148,10 +147,14 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 func (c *Chain[I, O]) buildInterceptors(fn HandleFunc[I, O]) HandleFunc[I, O] {
 	handleFunc := func(ctx context.Context, args *Args[I, O]) error {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return wrapError(fn, ctx.Err())
 		}
 
-		return fn(ctx, args)
+		if err := fn(ctx, args); err != nil {
+			return wrapError(fn, err)
+		}
+
+		return nil
 	}
 	for i := len(c.interceptors) - 1; i >= 0; i-- {
 		handleFunc = c.interceptors[i](handleFunc)
@@ -161,8 +164,12 @@ func (c *Chain[I, O]) buildInterceptors(fn HandleFunc[I, O]) HandleFunc[I, O] {
 
 // wrapError returns a new error with function name and original error
 func wrapError(fn any, err error) error {
+	return fmt.Errorf("%s: %w", getFunctionName(fn), err)
+}
+
+// getFunctionName returns the name of the given function
+func getFunctionName(fn any) string {
 	name := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 	parts := strings.Split(name, ".")
-	name = parts[len(parts)-1]
-	return fmt.Errorf("%s: %w", name, err)
+	return parts[len(parts)-1]
 }

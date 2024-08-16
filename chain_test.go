@@ -3,6 +3,7 @@ package chain_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -51,7 +52,7 @@ func TestSerial(t *testing.T) {
 	output := &TestOutput{}
 	c := chain.New(input, output)
 
-	c = c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
 		chain.Output().Result = strconv.Itoa(chain.Input().Value * 2)
 		return nil
 	})
@@ -70,7 +71,7 @@ func TestParallel(t *testing.T) {
 	output := &TestOutput{}
 	c := chain.New(input, output).WithMaxGoroutines(1)
 
-	c = c.Parallel(
+	c.Parallel(
 		func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
 			chain.WithLock(func() {
 				chain.Output().Result += "A"
@@ -110,7 +111,7 @@ func TestErrorHandling(t *testing.T) {
 
 	testError := errors.New("test error")
 
-	c = c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
 		return testError
 	})
 
@@ -128,7 +129,7 @@ func TestContextCancellation(t *testing.T) {
 
 	cancel() // Cancel the context
 
-	c = c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(_ context.Context, chain *chain.Args[TestInput, TestOutput]) error {
 		t.Error("Function should not be called after context cancellation")
 		return nil
 	})
@@ -167,12 +168,12 @@ func TestTimeout(t *testing.T) {
 	output := &TestOutput{}
 	c := chain.New(input, output)
 
-	c = c.Serial(func(ctx context.Context, chain *chain.Args[TestInput, TestOutput]) error {
+	c.Serial(func(ctx context.Context, chain *chain.Args[TestInput, TestOutput]) error {
 		time.Sleep(100 * time.Millisecond)
 		return ctx.Err()
 	})
 
-	c = c.WithTimeout(50 * time.Millisecond)
+	c.WithTimeout(50 * time.Millisecond)
 
 	_, err := c.Execute()
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
@@ -194,7 +195,7 @@ func TestRecover(t *testing.T) {
 		t.Errorf("Expected 'panic in execution\n', got %v", err)
 	}
 
-	c = chain.New(input, output).Use(chain.RecoverInterceptor).
+	chain.New(input, output).Use(chain.RecoverInterceptor).
 		Parallel(func(ctx context.Context, c *chain.Args[TestInput, TestOutput]) error {
 			panic("panic")
 		})
@@ -210,7 +211,7 @@ func TestWrapError(t *testing.T) {
 	output := &TestOutput{}
 	c := chain.New(input, output).Use(chain.LogInterceptor)
 
-	c = c.Serial(testWrapError)
+	c.Serial(testWrapError)
 
 	_, err := c.Execute()
 	if err == nil || !errors.Is(err, errTest) {
@@ -225,11 +226,13 @@ func testWrapError(ctx context.Context, c *chain.Args[TestInput, TestOutput]) er
 }
 
 func TestContextInInterceptor(t *testing.T) {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	input := &TestInput{Value: 5}
 	output := &TestOutput{}
 	c := chain.New(input, output).Use(chain.LogInterceptor)
 
-	c = c.Use(func(cf chain.HandleFunc[TestInput, TestOutput]) chain.HandleFunc[TestInput, TestOutput] {
+	c.Use(func(cf chain.HandleFunc[TestInput, TestOutput]) chain.HandleFunc[TestInput, TestOutput] {
 		return func(ctx context.Context, args *chain.Args[TestInput, TestOutput]) error {
 			ctx = context.WithValue(ctx, contextKey("key"), "value")
 			return cf(ctx, args)
