@@ -3,6 +3,7 @@ package chain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -53,7 +54,11 @@ func TestSerial(t *testing.T) {
 	c := chain.New(input, output)
 
 	c.Serial(func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
-		chain.Output().Result = strconv.Itoa(chain.Input().Value * 2)
+		value := chain.Input().Value
+		fmt.Println(chain.Output())
+		chain.SetOutput(func(to *TestOutput) {
+			to.Result = strconv.Itoa(value * 2)
+		})
 		return nil
 	})
 
@@ -69,24 +74,31 @@ func TestSerial(t *testing.T) {
 func TestParallel(t *testing.T) {
 	input := &TestInput{Value: 5}
 	output := &TestOutput{}
-	c := chain.New(input, output).WithMaxGoroutines(1)
+	c := chain.New(input, output).WithMaxGoroutines(10)
+	c.Parallel(func(ctx context.Context, s *chain.State[TestInput, TestOutput]) error {
+		fmt.Println(s.Input(), s.Output())
+		return nil
+	})
 
 	c.Parallel(
 		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
-			chain.WithLock(func() {
-				chain.Output().Result += "A"
+			fmt.Println(chain.Input(), chain.Output())
+			chain.SetOutput(func(o *TestOutput) {
+				o.Result += "A"
 			})
 			return nil
 		},
 		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
-			chain.WithLock(func() {
-				chain.Output().Result += "B"
+			fmt.Println(chain.Input(), chain.Output())
+			chain.SetOutput(func(o *TestOutput) {
+				o.Result += "B"
 			})
 			return nil
 		},
 		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
-			chain.WithLock(func() {
-				chain.Output().Result += "C"
+			fmt.Println(chain.Input(), chain.Output())
+			chain.SetOutput(func(o *TestOutput) {
+				o.Result += "C"
 			})
 			return nil
 		},
@@ -100,7 +112,7 @@ func TestParallel(t *testing.T) {
 	result.Result = string(slices.Compact([]byte(result.Result)))
 
 	if len(result.Result) != 3 {
-		t.Errorf("Expected result length 3, got %d", len(result.Result))
+		t.Errorf("Expected result length 3, got %v", result.Result)
 	}
 }
 

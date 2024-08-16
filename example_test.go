@@ -68,7 +68,9 @@ func calculateSum(ctx context.Context, c *chain.State[Input, Output]) error {
 	for _, num := range c.Input().Numbers {
 		sum += num
 	}
-	c.Output().Sum = sum
+	c.SetOutput(func(o *Output) {
+		o.Sum = sum
+	})
 	return nil
 }
 
@@ -78,8 +80,8 @@ func calculateProduct(ctx context.Context, c *chain.State[Input, Output]) error 
 	for _, num := range c.Input().Numbers {
 		product *= num
 	}
-	c.WithLock(func() {
-		c.Output().Product = product
+	c.SetOutput(func(o *Output) {
+		o.Product = product
 	})
 	return nil
 }
@@ -96,6 +98,8 @@ func simulateSlowOperation(ctx context.Context, c *chain.State[Input, Output]) e
 
 func markProcessed(ctx context.Context, c *chain.State[Input, Output]) error {
 	fmt.Println("Marking as processed")
-	c.Output().Processed = true
+	c.SetOutput(func(o *Output) {
+		o.Processed = true
+	})
 	return nil
 }

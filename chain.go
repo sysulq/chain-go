@@ -8,12 +8,13 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 )
 
-// HandleFunc represents a function that operates on a Chain's Args
+// HandleFunc represents a function that operates on a Chain's State
 type HandleFunc[I, O any] func(context.Context, *State[I, O]) error
 
 // Interceptor represents a function that wraps a handleFunc
@@ -31,9 +32,10 @@ type Chain[I, O any] struct {
 
 // State holds the input and output data and a mutex for synchronization
 type State[I, O any] struct {
-	mu     *sync.Mutex
-	input  *I
-	output *O
+	mu         sync.RWMutex
+	input      *I
+	output     *O
+	isParallel atomic.Bool
 }
 
 // New creates a new Chain, specifying input and output types
@@ -43,26 +45,41 @@ func New[I, O any](input *I, output *O) *Chain[I, O] {
 		state: &State[I, O]{
 			input:  input,
 			output: output,
-			mu:     &sync.Mutex{},
 		},
 	}
 }
 
-// Input returns a pointer to the input data of the Chain
-func (c *State[I, O]) Input() *I {
-	return c.input
+// Input returns a copy of the input data of the Chain
+//
+// When the chain is running in parallel, it use a mutex to get the input data
+func (s *State[I, O]) Input() I {
+	if s.isParallel.Load() {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+	}
+	return *s.input
 }
 
-// Output returns a pointer to the output data of the Chain
-func (c *State[I, O]) Output() *O {
-	return c.output
+// Output returns a copy of the output data of the Chain
+//
+// When the chain is running in parallel, it use a mutex to get the output data
+func (s *State[I, O]) Output() O {
+	if s.isParallel.Load() {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+	}
+	return *s.output
 }
 
-// WithLock executes the given function with the Chain's mutex locked
-func (c *State[I, O]) WithLock(fn func()) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	fn()
+// SetOutput sets the output data of the Chain
+//
+// When the chain is running in parallel, it use a mutex to set the output data
+func (s *State[I, O]) SetOutput(fn func(*O)) {
+	if s.isParallel.Load() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	fn(s.output)
 }
 
 // WithContext sets a custom context for the Chain
@@ -91,10 +108,10 @@ func (c *Chain[I, O]) Use(interceptor Interceptor[I, O]) *Chain[I, O] {
 
 // Serial adds operations to be executed sequentially
 func (c *Chain[I, O]) Serial(fns ...HandleFunc[I, O]) *Chain[I, O] {
-	c.fns = append(c.fns, func(ctx context.Context, args *State[I, O]) error {
+	c.fns = append(c.fns, func(ctx context.Context, state *State[I, O]) error {
 		for _, fn := range fns {
 			handleFunc := c.buildInterceptors(fn)
-			if err := handleFunc(ctx, c.state); err != nil {
+			if err := handleFunc(ctx, state); err != nil {
 				return err
 			}
 		}
@@ -105,18 +122,18 @@ func (c *Chain[I, O]) Serial(fns ...HandleFunc[I, O]) *Chain[I, O] {
 
 // Parallel adds operations to be executed concurrently
 func (c *Chain[I, O]) Parallel(fns ...HandleFunc[I, O]) *Chain[I, O] {
-	c.fns = append(c.fns, func(ctx context.Context, args *State[I, O]) error {
-		g, ctx := errgroup.WithContext(ctx)
+	c.fns = append(c.fns, func(ctx context.Context, state *State[I, O]) error {
+		state.isParallel.Store(true)
+		defer state.isParallel.Store(false)
 
+		g, ctx := errgroup.WithContext(ctx)
 		if c.maxGoroutines > 0 {
 			g.SetLimit(c.maxGoroutines)
 		}
+
 		for _, fn := range fns {
-			fn := fn // https://golang.org/doc/faq#closures_and_goroutines
-			g.Go(func() error {
-				handleFunc := c.buildInterceptors(fn)
-				return handleFunc(ctx, c.state)
-			})
+			fn := c.buildInterceptors(fn)
+			g.Go(func() error { return fn(ctx, state) })
 		}
 		return g.Wait()
 	})
@@ -145,12 +162,12 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 
 // buildInterceptors wraps the given handleFunc with all interceptors in the chain
 func (c *Chain[I, O]) buildInterceptors(fn HandleFunc[I, O]) HandleFunc[I, O] {
-	handleFunc := func(ctx context.Context, args *State[I, O]) error {
+	handleFunc := func(ctx context.Context, state *State[I, O]) error {
 		if ctx.Err() != nil {
 			return wrapError(fn, ctx.Err())
 		}
 
-		if err := fn(ctx, args); err != nil {
+		if err := fn(ctx, state); err != nil {
 			return wrapError(fn, err)
 		}
 
