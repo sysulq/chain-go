@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"time"
 )
 
@@ -17,6 +18,7 @@ func RecoverInterceptor[I, O any](fn HandleFunc[I, O]) HandleFunc[I, O] {
 			if isPanic {
 				if r := recover(); r != nil {
 					err = fmt.Errorf("%w: %v", errPanic, r)
+					debug.PrintStack()
 				}
 			}
 		}()
