@@ -27,8 +27,6 @@ go get github.com/sysulq/chain-go
 
 ## Usage
 
-### Basic Example
-
 Here's a simple example demonstrating the basic usage of Chain:
 
 ```go
@@ -37,6 +35,7 @@ package chain_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/sysulq/chain-go"
@@ -55,18 +54,20 @@ type Output struct {
 }
 
 func Example() {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	// Initialize input and output
 	input := &Input{Numbers: []int{1, 2, 3, 4, 5}}
 	output := &Output{}
 
 	// Create a new chain
 	c := chain.New(input, output).
-		WithTimeout(5 * time.Second).
-		Use(chain.RecoverInterceptor)
+		WithTimeout(5*time.Second).
+		Use(chain.RecoverInterceptor, chain.LogInterceptor)
 
 	// Define chain operations
 	c.Serial(
-		func(ctx context.Context, c *chain.Args[Input, Output]) error {
+		func(ctx context.Context, c *chain.State[Input, Output]) error {
 			fmt.Println("Starting serial operations")
 			return nil
 		},
@@ -96,29 +97,31 @@ func Example() {
 	// Sum: 15, Product: 120, Processed: true
 }
 
-func calculateSum(ctx context.Context, c *chain.Args[Input, Output]) error {
+func calculateSum(ctx context.Context, c *chain.State[Input, Output]) error {
 	fmt.Println("Calculating sum")
 	sum := 0
 	for _, num := range c.Input().Numbers {
 		sum += num
 	}
-	c.Output().Sum = sum
+	c.SetOutput(func(o *Output) {
+		o.Sum = sum
+	})
 	return nil
 }
 
-func calculateProduct(ctx context.Context, c *chain.Args[Input, Output]) error {
+func calculateProduct(ctx context.Context, c *chain.State[Input, Output]) error {
 	fmt.Println("Calculating product")
 	product := 1
 	for _, num := range c.Input().Numbers {
 		product *= num
 	}
-	c.WithLock(func() {
-		c.Output().Product = product
+	c.SetOutput(func(o *Output) {
+		o.Product = product
 	})
 	return nil
 }
 
-func simulateSlowOperation(ctx context.Context, c *chain.Args[Input, Output]) error {
+func simulateSlowOperation(ctx context.Context, c *chain.State[Input, Output]) error {
 	select {
 	case <-time.After(100 * time.Millisecond):
 		fmt.Println("Simulating slow operation")
@@ -128,45 +131,14 @@ func simulateSlowOperation(ctx context.Context, c *chain.Args[Input, Output]) er
 	}
 }
 
-func markProcessed(ctx context.Context, c *chain.Args[Input, Output]) error {
+func markProcessed(ctx context.Context, c *chain.State[Input, Output]) error {
 	fmt.Println("Marking as processed")
-	c.Output().Processed = true
+	c.SetOutput(func(o *Output) {
+		o.Processed = true
+	})
 	return nil
 }
 ```
-
-### Advanced Features
-
-1. **Using Context**:
-   ```go
-   ctx := context.WithValue(context.Background(), "key", "value")
-   c := chain.New(input, output).WithContext(ctx)
-   ```
-
-2. **Error Handling**:
-   ```go
-   c.Serial(func(ctx context.Context, args *chain.Args[Input, Output]) error {
-       return fmt.Errorf("an error occurred")
-   })
-   ```
-
-3. **Panic Recovery**:
-   ```go
-   c.Serial(func(ctx context.Context, args *chain.Args[Input, Output]) error {
-       panic("unexpected error")
-   })
-   // This panic will be recovered and converted to an error
-   ```
-
-4. **Thread-Safe Operations**:
-   ```go
-   c.Parallel(func(ctx context.Context, args *chain.Args[Input, Output]) error {
-       args.WithLock(func() {
-           // Thread-safe operation
-       })
-       return nil
-   })
-   ```
 
 ## Contributing
 
