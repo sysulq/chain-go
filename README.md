@@ -1,6 +1,7 @@
 # Chain: A Generic Operation Chain for Go
 
 [![Go](https://github.com/sysulq/chain-go/actions/workflows/go.yml/badge.svg)](https://github.com/sysulq/chain-go/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/sysulq/chain-go/graph/badge.svg?token=OYENB0NFMA)](https://codecov.io/gh/sysulq/chain-go)
 
 ## Introduction
 
