@@ -20,9 +20,8 @@ type Interceptor[I, O any] func(ChainFunc[I, O]) ChainFunc[I, O]
 
 // Chain represents a generic operation chain, supporting input type I and output type O
 type Chain[I, O any] struct {
-	chainArg      *Args[I, O]
+	args          *Args[I, O]
 	ctx           context.Context
-	err           error
 	fns           []ChainFunc[I, O]
 	interceptors  []Interceptor[I, O]
 	timeout       time.Duration
@@ -39,11 +38,11 @@ type Args[I, O any] struct {
 // New creates a new Chain, specifying input and output types
 func New[I, O any](input *I, output *O) *Chain[I, O] {
 	return &Chain[I, O]{
-		chainArg: &Args[I, O]{
+		ctx: context.Background(),
+		args: &Args[I, O]{
 			input:  input,
 			output: output,
 		},
-		ctx: context.Background(),
 	}
 }
 
@@ -93,7 +92,7 @@ func (c *Chain[I, O]) Serial(fns ...ChainFunc[I, O]) *Chain[I, O] {
 	c.fns = append(c.fns, func(ctx context.Context, args *Args[I, O]) error {
 		for _, fn := range fns {
 			chainFunc := c.buildInterceptors(fn)
-			if err := chainFunc(ctx, c.chainArg); err != nil {
+			if err := chainFunc(ctx, c.args); err != nil {
 				return wrapError(fn, err)
 			}
 		}
@@ -114,7 +113,7 @@ func (c *Chain[I, O]) Parallel(fns ...ChainFunc[I, O]) *Chain[I, O] {
 			fn := fn // https://golang.org/doc/faq#closures_and_goroutines
 			g.Go(func() error {
 				chainFunc := c.buildInterceptors(fn)
-				if err := chainFunc(ctx, c.chainArg); err != nil {
+				if err := chainFunc(ctx, c.args); err != nil {
 					return wrapError(fn, err)
 				}
 				return nil
@@ -136,13 +135,13 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 
 	for _, fn := range c.fns {
 		// Execute the chain
-		c.err = fn(ctx, c.chainArg)
-		if c.err != nil {
-			return c.chainArg.output, c.err
+		err := fn(ctx, c.args)
+		if err != nil {
+			return c.args.output, err
 		}
 	}
 
-	return c.chainArg.output, nil
+	return c.args.output, nil
 }
 
 // buildInterceptors wraps the given ChainFunc with all interceptors in the chain
