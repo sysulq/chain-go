@@ -107,7 +107,7 @@ func TestParallel(t *testing.T) {
 func TestErrorHandling(t *testing.T) {
 	input := &TestInput{Value: 5}
 	output := &TestOutput{}
-	c := chain.New(input, output)
+	c := chain.New(input, output).Use(chain.LogInterceptor)
 
 	testError := errors.New("test error")
 

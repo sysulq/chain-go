@@ -34,7 +34,7 @@ func LogInterceptor[I, O any](fn HandleFunc[I, O]) HandleFunc[I, O] {
 		err := fn(ctx, args)
 		if err != nil {
 			slog.WarnContext(ctx, "Error during execution", slog.Any("input", args.input), slog.Any("output", args.output),
-				"error", err, "elapsed", time.Since(now), "fn", getFunctionName(fn))
+				"error", err, "elapsed", time.Since(now))
 		} else {
 			slog.DebugContext(ctx, "After execution", slog.Any("input", args.input), slog.Any("output", args.output),
 				"elapsed", time.Since(now))
