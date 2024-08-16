@@ -30,13 +30,13 @@ func RecoverInterceptor[I, O any](fn HandleFunc[I, O]) HandleFunc[I, O] {
 func LogInterceptor[I, O any](fn HandleFunc[I, O]) HandleFunc[I, O] {
 	return func(ctx context.Context, args *State[I, O]) error {
 		now := time.Now()
-		slog.DebugContext(ctx, "Before execution", slog.Any("input", args.input), slog.Any("output", args.output))
+		slog.DebugContext(ctx, "After execution", slog.Any("input", args.Input()), slog.Any("output", args.Output()))
 		err := fn(ctx, args)
 		if err != nil {
-			slog.WarnContext(ctx, "Error during execution", slog.Any("input", args.input), slog.Any("output", args.output),
+			slog.DebugContext(ctx, "After execution", slog.Any("input", args.Input()), slog.Any("output", args.Output()),
 				"error", err, "elapsed", time.Since(now))
 		} else {
-			slog.DebugContext(ctx, "After execution", slog.Any("input", args.input), slog.Any("output", args.output),
+			slog.DebugContext(ctx, "After execution", slog.Any("input", args.Input()), slog.Any("output", args.Output()),
 				"elapsed", time.Since(now))
 		}
 

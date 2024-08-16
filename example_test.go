@@ -3,6 +3,7 @@ package chain_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/sysulq/chain-go"
@@ -21,14 +22,16 @@ type Output struct {
 }
 
 func Example() {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	// Initialize input and output
 	input := &Input{Numbers: []int{1, 2, 3, 4, 5}}
 	output := &Output{}
 
 	// Create a new chain
 	c := chain.New(input, output).
-		WithTimeout(5 * time.Second).
-		Use(chain.RecoverInterceptor)
+		WithTimeout(5*time.Second).
+		Use(chain.RecoverInterceptor, chain.LogInterceptor)
 
 	// Define chain operations
 	c.Serial(

@@ -72,15 +72,39 @@ func TestSerial(t *testing.T) {
 }
 
 func TestParallel(t *testing.T) {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	input := &TestInput{Value: 5}
 	output := &TestOutput{}
-	c := chain.New(input, output).WithMaxGoroutines(10)
+	c := chain.New(input, output).WithMaxGoroutines(10).Use(chain.LogInterceptor)
 	c.Parallel(func(ctx context.Context, s *chain.State[TestInput, TestOutput]) error {
 		fmt.Println(s.Input(), s.Output())
 		return nil
 	})
 
 	c.Parallel(
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
+			fmt.Println(chain.Input(), chain.Output())
+			chain.SetOutput(func(o *TestOutput) {
+				o.Result += "A"
+			})
+			return nil
+		},
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
+			fmt.Println(chain.Input(), chain.Output())
+			chain.SetOutput(func(o *TestOutput) {
+				o.Result += "B"
+			})
+			return nil
+		},
+		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
+			fmt.Println(chain.Input(), chain.Output())
+			chain.SetOutput(func(o *TestOutput) {
+				o.Result += "C"
+			})
+			return nil
+		},
+	).Parallel(
 		func(_ context.Context, chain *chain.State[TestInput, TestOutput]) error {
 			fmt.Println(chain.Input(), chain.Output())
 			chain.SetOutput(func(o *TestOutput) {
@@ -111,7 +135,7 @@ func TestParallel(t *testing.T) {
 
 	result.Result = string(slices.Compact([]byte(result.Result)))
 
-	if len(result.Result) != 3 {
+	if len(result.Result) != 6 {
 		t.Errorf("Expected result length 3, got %v", result.Result)
 	}
 }

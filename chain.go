@@ -2,11 +2,6 @@ package chain
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"reflect"
-	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -100,9 +95,9 @@ func (c *Chain[I, O]) WithMaxGoroutines(max int) *Chain[I, O] {
 	return c
 }
 
-// Use adds an interceptor to the chain
-func (c *Chain[I, O]) Use(interceptor Interceptor[I, O]) *Chain[I, O] {
-	c.interceptors = append(c.interceptors, interceptor)
+// Use adds interceptors to the chain to be executed before each operation
+func (c *Chain[I, O]) Use(interceptors ...Interceptor[I, O]) *Chain[I, O] {
+	c.interceptors = append(c.interceptors, interceptors...)
 	return c
 }
 
@@ -110,8 +105,8 @@ func (c *Chain[I, O]) Use(interceptor Interceptor[I, O]) *Chain[I, O] {
 func (c *Chain[I, O]) Serial(fns ...HandleFunc[I, O]) *Chain[I, O] {
 	c.fns = append(c.fns, func(ctx context.Context, state *State[I, O]) error {
 		for _, fn := range fns {
-			handleFunc := c.buildInterceptors(fn)
-			if err := handleFunc(ctx, state); err != nil {
+			fn := c.buildInterceptors(fn)
+			if err := fn(ctx, state); err != nil {
 				return err
 			}
 		}
@@ -153,7 +148,7 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 		// Execute the chain
 		err := fn(ctx, c.state)
 		if err != nil {
-			return c.state.output, errors.Unwrap(err)
+			return c.state.output, err
 		}
 	}
 
@@ -164,29 +159,13 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 func (c *Chain[I, O]) buildInterceptors(fn HandleFunc[I, O]) HandleFunc[I, O] {
 	handleFunc := func(ctx context.Context, state *State[I, O]) error {
 		if ctx.Err() != nil {
-			return wrapError(fn, ctx.Err())
+			return ctx.Err()
 		}
 
-		if err := fn(ctx, state); err != nil {
-			return wrapError(fn, err)
-		}
-
-		return nil
+		return fn(ctx, state)
 	}
 	for i := len(c.interceptors) - 1; i >= 0; i-- {
 		handleFunc = c.interceptors[i](handleFunc)
 	}
 	return handleFunc
-}
-
-// wrapError returns a new error with function name and original error
-func wrapError(fn any, err error) error {
-	return fmt.Errorf("%s: %w", getFunctionName(fn), err)
-}
-
-// getFunctionName returns the name of the given function
-func getFunctionName(fn any) string {
-	name := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
-	parts := strings.Split(name, ".")
-	return parts[len(parts)-1]
 }
