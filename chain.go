@@ -31,9 +31,9 @@ type Chain[I, O any] struct {
 
 // Args holds the input and output data and a mutex for synchronization
 type Args[I, O any] struct {
+	mu     *sync.Mutex
 	input  *I
 	output *O
-	mu     sync.Mutex
 }
 
 // New creates a new Chain, specifying input and output types
@@ -43,7 +43,7 @@ func New[I, O any](input *I, output *O) *Chain[I, O] {
 		args: &Args[I, O]{
 			input:  input,
 			output: output,
-			mu:     sync.Mutex{},
+			mu:     &sync.Mutex{},
 		},
 	}
 }
@@ -61,8 +61,8 @@ func (c *Args[I, O]) Output() *O {
 // WithLock executes the given function with the Chain's mutex locked
 func (c *Args[I, O]) WithLock(fn func()) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	fn()
-	c.mu.Unlock()
 }
 
 // WithContext sets a custom context for the Chain
