@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -132,8 +131,6 @@ func TestParallel(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-
-	result.Result = string(slices.Compact([]byte(result.Result)))
 
 	if len(result.Result) != 6 {
 		t.Errorf("Expected result length 3, got %v", result.Result)
