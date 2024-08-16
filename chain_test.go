@@ -208,7 +208,7 @@ func TestRecover(t *testing.T) {
 func TestWrapError(t *testing.T) {
 	input := &TestInput{Value: 5}
 	output := &TestOutput{}
-	c := chain.New(input, output).Use(chain.DebugInterceptor)
+	c := chain.New(input, output).Use(chain.LogInterceptor)
 
 	c = c.Serial(testWrapError)
 
@@ -227,9 +227,9 @@ func testWrapError(ctx context.Context, c *chain.Args[TestInput, TestOutput]) er
 func TestContextInInterceptor(t *testing.T) {
 	input := &TestInput{Value: 5}
 	output := &TestOutput{}
-	c := chain.New(input, output).Use(chain.DebugInterceptor)
+	c := chain.New(input, output).Use(chain.LogInterceptor)
 
-	c = c.Use(func(cf chain.ChainFunc[TestInput, TestOutput]) chain.ChainFunc[TestInput, TestOutput] {
+	c = c.Use(func(cf chain.HandleFunc[TestInput, TestOutput]) chain.HandleFunc[TestInput, TestOutput] {
 		return func(ctx context.Context, args *chain.Args[TestInput, TestOutput]) error {
 			ctx = context.WithValue(ctx, contextKey("key"), "value")
 			return cf(ctx, args)

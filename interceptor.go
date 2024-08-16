@@ -7,7 +7,7 @@ import (
 )
 
 // RecoverInterceptor is an interceptor that recovers from panics in the ChainFunc
-func RecoverInterceptor[I, O any](fn ChainFunc[I, O]) ChainFunc[I, O] {
+func RecoverInterceptor[I, O any](fn HandleFunc[I, O]) HandleFunc[I, O] {
 	return func(ctx context.Context, args *Args[I, O]) (err error) {
 		isPanic := true
 		defer func() {
@@ -23,8 +23,8 @@ func RecoverInterceptor[I, O any](fn ChainFunc[I, O]) ChainFunc[I, O] {
 	}
 }
 
-// DebugInterceptor is an interceptor that prints the input and output of the ChainFunc
-func DebugInterceptor[I, O any](fn ChainFunc[I, O]) ChainFunc[I, O] {
+// LogInterceptor is an interceptor that prints the input and output of the ChainFunc
+func LogInterceptor[I, O any](fn HandleFunc[I, O]) HandleFunc[I, O] {
 	return func(ctx context.Context, args *Args[I, O]) error {
 		slog.InfoContext(ctx, "Before execution", slog.Any("input", args.input), slog.Any("output", args.output))
 		err := fn(ctx, args)

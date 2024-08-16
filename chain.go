@@ -12,17 +12,17 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// ChainFunc represents a function that operates on a Chain's Args
-type ChainFunc[I, O any] func(context.Context, *Args[I, O]) error
+// HandleFunc represents a function that operates on a Chain's Args
+type HandleFunc[I, O any] func(context.Context, *Args[I, O]) error
 
-// Interceptor represents a function that wraps a ChainFunc
-type Interceptor[I, O any] func(ChainFunc[I, O]) ChainFunc[I, O]
+// Interceptor represents a function that wraps a handleFunc
+type Interceptor[I, O any] func(HandleFunc[I, O]) HandleFunc[I, O]
 
 // Chain represents a generic operation chain, supporting input type I and output type O
 type Chain[I, O any] struct {
 	args          *Args[I, O]
 	ctx           context.Context
-	fns           []ChainFunc[I, O]
+	fns           []HandleFunc[I, O]
 	interceptors  []Interceptor[I, O]
 	timeout       time.Duration
 	maxGoroutines int
@@ -88,11 +88,11 @@ func (c *Chain[I, O]) Use(interceptor Interceptor[I, O]) *Chain[I, O] {
 }
 
 // Serial adds one or more operations to be executed sequentially
-func (c *Chain[I, O]) Serial(fns ...ChainFunc[I, O]) *Chain[I, O] {
+func (c *Chain[I, O]) Serial(fns ...HandleFunc[I, O]) *Chain[I, O] {
 	c.fns = append(c.fns, func(ctx context.Context, args *Args[I, O]) error {
 		for _, fn := range fns {
-			chainFunc := c.buildInterceptors(fn)
-			if err := chainFunc(ctx, c.args); err != nil {
+			handleFunc := c.buildInterceptors(fn)
+			if err := handleFunc(ctx, c.args); err != nil {
 				return wrapError(fn, err)
 			}
 		}
@@ -102,7 +102,7 @@ func (c *Chain[I, O]) Serial(fns ...ChainFunc[I, O]) *Chain[I, O] {
 }
 
 // Parallel adds operations to be executed concurrently
-func (c *Chain[I, O]) Parallel(fns ...ChainFunc[I, O]) *Chain[I, O] {
+func (c *Chain[I, O]) Parallel(fns ...HandleFunc[I, O]) *Chain[I, O] {
 	c.fns = append(c.fns, func(ctx context.Context, args *Args[I, O]) error {
 		g, ctx := errgroup.WithContext(ctx)
 
@@ -112,8 +112,8 @@ func (c *Chain[I, O]) Parallel(fns ...ChainFunc[I, O]) *Chain[I, O] {
 		for _, fn := range fns {
 			fn := fn // https://golang.org/doc/faq#closures_and_goroutines
 			g.Go(func() error {
-				chainFunc := c.buildInterceptors(fn)
-				if err := chainFunc(ctx, c.args); err != nil {
+				handleFunc := c.buildInterceptors(fn)
+				if err := handleFunc(ctx, c.args); err != nil {
 					return wrapError(fn, err)
 				}
 				return nil
@@ -144,9 +144,9 @@ func (c *Chain[I, O]) Execute() (*O, error) {
 	return c.args.output, nil
 }
 
-// buildInterceptors wraps the given ChainFunc with all interceptors in the chain
-func (c *Chain[I, O]) buildInterceptors(fn ChainFunc[I, O]) ChainFunc[I, O] {
-	chainFunc := func(ctx context.Context, args *Args[I, O]) error {
+// buildInterceptors wraps the given handleFunc with all interceptors in the chain
+func (c *Chain[I, O]) buildInterceptors(fn HandleFunc[I, O]) HandleFunc[I, O] {
+	handleFunc := func(ctx context.Context, args *Args[I, O]) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -154,9 +154,9 @@ func (c *Chain[I, O]) buildInterceptors(fn ChainFunc[I, O]) ChainFunc[I, O] {
 		return fn(ctx, args)
 	}
 	for i := len(c.interceptors) - 1; i >= 0; i-- {
-		chainFunc = c.interceptors[i](chainFunc)
+		handleFunc = c.interceptors[i](handleFunc)
 	}
-	return chainFunc
+	return handleFunc
 }
 
 // wrapError returns a new error with function name and original error
